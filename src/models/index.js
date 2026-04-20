@@ -12,7 +12,7 @@ const MoyenneMatiere = require('./MoyenneMatiere');
 const MoyenneUE = require('./MoyenneUE');
 const ResultatSemestre = require('./ResultatSemestre');
 const ResultatAnnuel = require('./ResultatAnnuel');
-const LogAudit = require('./Logaudit');
+const LogAudit = require('./LogAudit');
 const Parametrage = require('./Parametrage');
 
 
