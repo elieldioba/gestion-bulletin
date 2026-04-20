@@ -4,6 +4,10 @@ const app = require('./app');
 const { sequelize, Parametrage } = require('./src/models/index');
 require('dotenv').config();
 
+console.log('DB_HOST:', process.env.DB_HOST);
+console.log('DB_PORT:', process.env.DB_PORT);
+console.log('DB_NAME:', process.env.DB_NAME);
+
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
