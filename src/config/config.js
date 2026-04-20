@@ -1,8 +1,7 @@
-'use strict';
-
-const { Sequelize } = require('sequelize');
 // Charge les variables du fichier .env
 require('dotenv').config();
+
+const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
   process.env.DB_NAME,     // Nom de la base (ex: gestion_bulletins)
