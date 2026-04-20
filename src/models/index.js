@@ -13,6 +13,7 @@ const MoyenneUE = require('./MoyenneUE');
 const ResultatSemestre = require('./ResultatSemestre');
 const ResultatAnnuel = require('./ResultatAnnuel');
 const LogAudit = require('./Logaudit');
+const Parametrage = require('./Parametrage');
 
 
 // Utilisateur <-> Etudiant
@@ -76,6 +77,8 @@ ResultatAnnuel.belongsTo(Etudiant, { foreignKey: 'etudiantId' });
 Utilisateur.hasMany(LogAudit, { foreignKey: 'utilisateurId' });
 LogAudit.belongsTo(Utilisateur, { foreignKey: 'utilisateurId' });
 
+
+
 module.exports = {
   sequelize,
   Utilisateur,
@@ -89,5 +92,7 @@ module.exports = {
   MoyenneUE,
   ResultatSemestre,
   ResultatAnnuel,
-  LogAudit
+  LogAudit,
+  Parametrage
+
 };

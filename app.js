@@ -21,6 +21,9 @@ app.use('/api/bulletins', require('./src/routes/bulletin.routes'));
 app.use('/api/import', require('./src/routes/import.routes'));
 app.use('/api/export', require('./src/routes/export.routes'));
 app.use('/api/audit', require('./src/routes/audit.routes'));
+app.use('/api/absences', require('./src/routes/absence.routes'));
+app.use('/api/statistiques', require('./src/routes/statistiques.routes'));
+app.use('/api/parametrage', require('./src/routes/parametrage.routes'));
 
 // Route de test
 app.get('/', (req, res) => {

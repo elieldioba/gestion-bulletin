@@ -3,6 +3,34 @@
 const PDFDocument = require('pdfkit');
 const { Etudiant, Semestre, UE, Matiere, Evaluation, MoyenneMatiere, MoyenneUE, ResultatSemestre, ResultatAnnuel } = require('../models/index');
 
+
+// Calcul des statistiques de promotion pour un semestre
+const getStatistiquesPromotion = async (semestreId) => {
+  const { ResultatSemestre, Etudiant } = require('../models/index');
+  const etudiants = await Etudiant.findAll();
+  const moyennes = [];
+
+  for (const etudiant of etudiants) {
+    const resultat = await ResultatSemestre.findOne({
+      where: { etudiantId: etudiant.id, semestreId }
+    });
+    if (resultat && resultat.moyenneSemestre !== null) {
+      moyennes.push(resultat.moyenneSemestre);
+    }
+  }
+
+  if (moyennes.length === 0) return null;
+
+  const moyenneClasse = Math.round((moyennes.reduce((a, b) => a + b, 0) / moyennes.length) * 100) / 100;
+  const min = Math.min(...moyennes);
+  const max = Math.max(...moyennes);
+  const variance = moyennes.reduce((sum, v) => sum + Math.pow(v - moyenneClasse, 2), 0) / moyennes.length;
+  const ecartType = Math.round(Math.sqrt(variance) * 100) / 100;
+
+  return { moyenneClasse, min, max, ecartType, nombreEtudiants: moyennes.length };
+};
+
+
 const genererBulletinSemestre = async (etudiantId, semestreId) => {
   const etudiant = await Etudiant.findByPk(etudiantId);
   const semestre = await Semestre.findByPk(semestreId);
@@ -116,7 +144,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     doc.moveDown(0.5);
   }
 
-  // ===== RESULTAT SEMESTRE =====
+ // ===== RESULTAT SEMESTRE =====
   doc.moveDown(0.5);
   doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#2c3e50').lineWidth(2).stroke();
   doc.moveDown(0.3);
@@ -132,6 +160,40 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     doc.text(`Décision : ${resultat.valide ? 'Semestre VALIDE' : 'Semestre NON VALIDE'}`);
   } else {
     doc.text('Résultats non disponibles.');
+  }
+
+  // ===== STATISTIQUES PROMOTION =====
+  const stats = await getStatistiquesPromotion(semestreId);
+  if (stats) {
+    doc.moveDown(0.5);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#2c3e50').lineWidth(1).stroke();
+    doc.moveDown(0.3);
+
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#1a1a2e')
+       .text('STATISTIQUES DE LA PROMOTION');
+    doc.moveDown(0.3);
+
+    // Tableau stats
+    const yStats = doc.y;
+    doc.fillColor('#2c3e50').rect(40, yStats, 515, 18).fill();
+    doc.fillColor('white').fontSize(9).font('Helvetica-Bold');
+    doc.text('Nb Étudiants', 45, yStats + 4, { width: 100, align: 'center' });
+    doc.text('Moyenne Classe', 150, yStats + 4, { width: 110, align: 'center' });
+    doc.text('Minimum', 265, yStats + 4, { width: 90, align: 'center' });
+    doc.text('Maximum', 360, yStats + 4, { width: 90, align: 'center' });
+    doc.text('Écart-Type', 455, yStats + 4, { width: 90, align: 'center' });
+
+    const yStatsRow = yStats + 20;
+    doc.fillColor('#f8f9fa').rect(40, yStatsRow, 515, 18).fill();
+    doc.fillColor('#333333').fontSize(9).font('Helvetica');
+    doc.text(stats.nombreEtudiants.toString(), 45, yStatsRow + 4, { width: 100, align: 'center' });
+    doc.text(stats.moyenneClasse.toFixed(2), 150, yStatsRow + 4, { width: 110, align: 'center' });
+    doc.text(stats.min.toFixed(2), 265, yStatsRow + 4, { width: 90, align: 'center' });
+    doc.text(stats.max.toFixed(2), 360, yStatsRow + 4, { width: 90, align: 'center' });
+    doc.text(stats.ecartType.toFixed(2), 455, yStatsRow + 4, { width: 90, align: 'center' });
+
+    doc.moveTo(40, yStatsRow + 18).lineTo(555, yStatsRow + 18).strokeColor('#dddddd').stroke();
+    doc.moveDown(3);
   }
 
   // ===== PIED DE PAGE =====
@@ -267,5 +329,154 @@ const genererBulletinAnnuel = async (etudiantId) => {
   });
 };
 
-module.exports = { genererBulletinSemestre, genererBulletinAnnuel };
+
+const genererBulletinHTML = async (etudiantId, semestreId) => {
+  const etudiant = await Etudiant.findByPk(etudiantId);
+  const semestre = await Semestre.findByPk(semestreId);
+  const ues = await UE.findAll({ where: { semestreId } });
+  const resultat = await ResultatSemestre.findOne({ where: { etudiantId, semestreId } });
+  const stats = await getStatistiquesPromotion(semestreId);
+
+  let lignesUE = '';
+
+  for (const ue of ues) {
+    const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
+    const moyenneUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
+
+    let lignesMatieres = '';
+    for (const matiere of matieres) {
+      const evaluations = await Evaluation.findAll({ where: { etudiantId, matiereId: matiere.id } });
+      const moyenneMatiere = await MoyenneMatiere.findOne({ where: { etudiantId, matiereId: matiere.id } });
+
+      const cc = evaluations.find(e => e.type === 'CC');
+      const examen = evaluations.find(e => e.type === 'EXAMEN');
+      const rattrapage = evaluations.find(e => e.type === 'RATTRAPAGE');
+      const moy = moyenneMatiere ? moyenneMatiere.moyenne : null;
+      const couleur = moy !== null ? (moy >= 10 ? '#27ae60' : '#e74c3c') : '#333';
+
+      lignesMatieres += `
+        <tr>
+          <td>${matiere.libelle}</td>
+          <td>${matiere.coefficient}</td>
+          <td>${cc ? cc.note.toFixed(2) : '-'}</td>
+          <td>${examen ? examen.note.toFixed(2) : '-'}</td>
+          <td>${rattrapage ? rattrapage.note.toFixed(2) : '-'}</td>
+          <td style="color:${couleur}; font-weight:bold">${moy !== null ? moy.toFixed(2) : '-'}</td>
+          <td>${matiere.credits}</td>
+        </tr>`;
+    }
+
+    const moyUE = moyenneUE ? moyenneUE.moyenne : null;
+    const statutUE = moyenneUE
+      ? (moyenneUE.compense ? 'Compensée' : moyenneUE.creditsAcquis > 0 ? 'Acquise' : 'Non acquise')
+      : '-';
+
+    lignesUE += `
+      <tr class="ue-header">
+        <td colspan="7">${ue.code} — ${ue.libelle}</td>
+      </tr>
+      ${lignesMatieres}
+      <tr class="ue-footer">
+        <td colspan="5">Moyenne ${ue.code} — ${statutUE}</td>
+        <td>${moyUE !== null ? moyUE.toFixed(2) : '-'}</td>
+        <td>${moyenneUE ? moyenneUE.creditsAcquis : 0}</td>
+      </tr>`;
+  }
+
+  const statsHTML = stats ? `
+    <h3>Statistiques de la Promotion</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Nb Étudiants</th>
+          <th>Moyenne Classe</th>
+          <th>Minimum</th>
+          <th>Maximum</th>
+          <th>Écart-Type</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${stats.nombreEtudiants}</td>
+          <td>${stats.moyenneClasse.toFixed(2)}</td>
+          <td>${stats.min.toFixed(2)}</td>
+          <td>${stats.max.toFixed(2)}</td>
+          <td>${stats.ecartType.toFixed(2)}</td>
+        </tr>
+      </tbody>
+    </table>` : '';
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Bulletin ${semestre.libelle} — ${etudiant.nom} ${etudiant.prenom}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; color: #333; }
+    h1, h2 { text-align: center; }
+    h1 { color: #1a1a2e; font-size: 18px; }
+    h2 { color: #2c3e50; font-size: 14px; }
+    h3 { color: #2c3e50; font-size: 13px; border-bottom: 2px solid #2c3e50; padding-bottom: 5px; }
+    .info-box { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
+    .info-box p { margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+    th { background: #2c3e50; color: white; padding: 8px; text-align: center; }
+    td { padding: 6px 8px; border: 1px solid #ddd; text-align: center; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    .ue-header { background: #1a1a2e !important; color: white; font-weight: bold; }
+    .ue-header td { color: white; text-align: left; }
+    .ue-footer { background: #ecf0f1 !important; font-weight: bold; }
+    .resultat { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
+    .valide { color: #27ae60; font-weight: bold; }
+    .non-valide { color: #e74c3c; font-weight: bold; }
+    .footer { text-align: center; color: #888; font-size: 11px; margin-top: 30px; }
+    @media print { body { margin: 10px; } }
+  </style>
+</head>
+<body>
+  <h1>INSTITUT NATIONAL DE LA POSTE ET DES TIC</h1>
+  <h2>Licence Professionnelle ASUR</h2>
+  <h2>BULLETIN DE NOTES — ${semestre.libelle} | Année : ${semestre.anneeUniversitaire}</h2>
+
+  <div class="info-box">
+    <p><strong>Nom :</strong> ${etudiant.nom} &nbsp;&nbsp; <strong>Prénom :</strong> ${etudiant.prenom}</p>
+    <p><strong>Date de naissance :</strong> ${etudiant.dateNaissance || 'N/A'} &nbsp;&nbsp; <strong>Lieu :</strong> ${etudiant.lieuNaissance || 'N/A'}</p>
+    <p><strong>Baccalauréat :</strong> ${etudiant.typeBac || 'N/A'} &nbsp;&nbsp; <strong>Établissement :</strong> ${etudiant.provenance || 'N/A'}</p>
+  </div>
+
+  <h3>Notes et Résultats</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>Matière</th><th>Coef</th><th>CC</th>
+        <th>Examen</th><th>Rattrapage</th><th>Moyenne</th><th>Crédits</th>
+      </tr>
+    </thead>
+    <tbody>${lignesUE}</tbody>
+  </table>
+
+  <div class="resultat">
+    <h3>Résultat du Semestre</h3>
+    <p><strong>Moyenne générale :</strong> ${resultat ? resultat.moyenneSemestre + '/20' : 'N/A'}</p>
+    <p><strong>Crédits acquis :</strong> ${resultat ? resultat.creditsTotal : 0} / 30</p>
+    <p><strong>Décision :</strong>
+      <span class="${resultat?.valide ? 'valide' : 'non-valide'}">
+        ${resultat?.valide ? 'Semestre VALIDE' : 'Semestre NON VALIDE'}
+      </span>
+    </p>
+  </div>
+
+  ${statsHTML}
+
+  <div class="footer">
+    Document généré le ${new Date().toLocaleDateString('fr-FR')} — INPTIC LP ASUR
+  </div>
+</body>
+</html>`;
+
+  return html;
+};
+
+module.exports = { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML };
+
 

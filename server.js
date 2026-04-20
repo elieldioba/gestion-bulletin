@@ -1,7 +1,7 @@
 'use strict';
 
 const app = require('./app');
-const { sequelize } = require('./src/models/index');
+const { sequelize, Parametrage } = require('./src/models/index');
 require('dotenv').config();
 
 const PORT = process.env.PORT || 3000;
@@ -13,6 +13,20 @@ async function startServer() {
 
     await sequelize.sync({ alter: false });
     console.log('✅ Base de données synchronisée');
+
+    // Initialisation des paramètres par défaut
+    const parametresDefaut = [
+      { cle: 'POIDS_CC', valeur: '0.4', description: 'Pondération du contrôle continu (défaut: 40%)' },
+      { cle: 'POIDS_EXAMEN', valeur: '0.6', description: 'Pondération de l\'examen final (défaut: 60%)' },
+      { cle: 'PENALITE_ABSENCE', valeur: '0.01', description: 'Pénalité par heure d\'absence (défaut: 0.01 point)' },
+      { cle: 'CREDITS_SEMESTRE', valeur: '30', description: 'Crédits requis pour valider un semestre' },
+      { cle: 'CREDITS_ANNUEL', valeur: '60', description: 'Crédits requis pour être diplômé' }
+    ];
+
+    for (const param of parametresDefaut) {
+      await Parametrage.findOrCreate({ where: { cle: param.cle }, defaults: param });
+    }
+    console.log('✅ Paramètres initialisés');
 
     app.listen(PORT, () => {
       console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);

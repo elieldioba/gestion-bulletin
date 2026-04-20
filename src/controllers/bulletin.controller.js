@@ -1,7 +1,8 @@
 'use strict';
 
-const { genererBulletinSemestre, genererBulletinAnnuel } = require('../services/bulletin.service');
+const { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML } = require('../services/bulletin.service');
 const { Semestre } = require('../models/index');
+
 
 const telechargerBulletinSemestre = async (req, res) => {
   try {
@@ -30,4 +31,19 @@ const telechargerBulletinAnnuel = async (req, res) => {
   }
 };
 
-module.exports = { telechargerBulletinSemestre, telechargerBulletinAnnuel };
+
+const telechargerBulletinHTML = async (req, res) => {
+  try {
+    const { etudiantId, semestreId } = req.params;
+    const html = await genererBulletinHTML(etudiantId, semestreId);
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=bulletin_S${semestreId}_etudiant${etudiantId}.html`);
+    res.send(html);
+  } catch (error) {
+    return res.status(500).json({ message: 'Erreur génération HTML.', erreur: error.message });
+  }
+};
+
+module.exports = { telechargerBulletinSemestre, telechargerBulletinAnnuel, telechargerBulletinHTML };
+
