@@ -1,17 +1,18 @@
-// Charge les variables du fichier .env
 require('dotenv').config();
-
 const { Sequelize } = require('sequelize');
 
 const sequelize = new Sequelize(
-  process.env.DB_NAME,     // Nom de la base (ex: gestion_bulletins)
-  process.env.DB_USER,     // Utilisateur (ex: root)
-  process.env.DB_PASSWORD, // Mot de passe (vide en local par défaut)
+  process.env.NOM_DB || process.env.DB_NAME,
+  process.env.utilisateur || process.env.DB_USER,
+  process.env.mot_de_passe || process.env.DB_PASSWORD,
   {
-    host: process.env.DB_HOST, // S'adaptera à 'localhost' ou à l'URL Railway
-    port: process.env.DB_PORT || 3306,
+    host: process.env.DB_HOST,
+    port: process.env.PORT_DB || process.env.DB_PORT || 3306,
     dialect: 'mysql',
-    logging: false
+    logging: false,
+    dialectOptions: {
+      connectTimeout: 60000 // Optionnel : utile pour éviter les timeouts sur les connexions distantes
+    }
   }
 );
 
