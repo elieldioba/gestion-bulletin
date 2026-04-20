@@ -1,0 +1,10 @@
+# Dépendances (Le plus important !)
+node_modules/
+
+# Variables d'environnement (Sécurité des accès MySQL)
+.env
+
+# Logs et fichiers temporaires
+npm-debug.log*
+yarn-error.log*
+.DS_Store
