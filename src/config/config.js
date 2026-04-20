@@ -1,14 +1,16 @@
 'use strict';
 
 const { Sequelize } = require('sequelize');
+// Charge les variables du fichier .env
+require('dotenv').config();
 
 const sequelize = new Sequelize(
-  'gestion_bulletins',
-  'root',
-  '',
+  process.env.DB_NAME,     // Nom de la base (ex: gestion_bulletins)
+  process.env.DB_USER,     // Utilisateur (ex: root)
+  process.env.DB_PASSWORD, // Mot de passe (vide en local par défaut)
   {
-    host: 'localhost',
-    port: 3306,
+    host: process.env.DB_HOST, // S'adaptera à 'localhost' ou à l'URL Railway
+    port: process.env.DB_PORT || 3306,
     dialect: 'mysql',
     logging: false
   }
