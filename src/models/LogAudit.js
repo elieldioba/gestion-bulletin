@@ -38,14 +38,14 @@ const LogAudit = sequelize.define('LogAudit', {
     type: DataTypes.STRING(50),
     allowNull: true
   },
-  donnéesAvant: {
-    type: DataTypes.JSON,
-    allowNull: true
-  },
-  donnéesAprès: {
-    type: DataTypes.JSON,
-    allowNull: true
-  }
+  donneesAvant: {
+  type: DataTypes.JSON,
+  allowNull: true
+},
+donneesApres: {
+  type: DataTypes.JSON,
+  allowNull: true
+}
 }, {
   tableName: 'logs_audit',
   timestamps: true,

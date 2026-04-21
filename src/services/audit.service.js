@@ -2,15 +2,15 @@
 
 const { LogAudit } = require('../models/index');
 
-const enregistrerLog = async (action, description, utilisateurId, ipAdresse, donnéesAvant = null, donnéesAprès = null) => {
+const enregistrerLog = async (action, description, utilisateurId, ipAdresse, donneesAvant = null, donneesApres = null) => {
   try {
     await LogAudit.create({
       action,
       description,
       utilisateurId,
       ipAdresse,
-      donnéesAvant,
-      donnéesAprès
+      donneesAvant,
+      donneesApres
     });
   } catch (error) {
     console.error('Erreur log audit:', error.message);

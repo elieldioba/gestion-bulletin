@@ -18,16 +18,16 @@ const saisirNote = async (req, res) => {
       where: { etudiantId, matiereId, type }
     });
 
-    const donnéesAvant = evaluation ? { note: evaluation.note } : null;
+    const donneesAvant = evaluation ? { note: evaluation.note } : null;
 
     if (evaluation) {
       await evaluation.update({ note, dateSaisie: new Date() });
       await enregistrerLog(
         'MODIFICATION_NOTE',
-        `Note ${type} modifiée pour étudiant ${etudiantId}, matière ${matiereId} : ${donnéesAvant.note} → ${note}`,
+        `Note ${type} modifiée pour étudiant ${etudiantId}, matière ${matiereId} : ${donneesAvant.note} → ${note}`,
         req.utilisateur.id,
         req.ip,
-        donnéesAvant,
+        donneesAvant,
         { note }
       );
     } else {
@@ -76,7 +76,7 @@ const supprimerNote = async (req, res) => {
     if (!evaluation) return res.status(404).json({ message: 'Note introuvable.' });
 
     const { etudiantId } = evaluation;
-    const donnéesAvant = { note: evaluation.note, type: evaluation.type };
+    const donneesAvant = { note: evaluation.note, type: evaluation.type };
 
     await evaluation.destroy();
 
@@ -85,7 +85,7 @@ const supprimerNote = async (req, res) => {
       `Note ${evaluation.type} supprimée pour étudiant ${etudiantId}`,
       req.utilisateur.id,
       req.ip,
-      donnéesAvant,
+      donneesAvant,
       null
     );
 
