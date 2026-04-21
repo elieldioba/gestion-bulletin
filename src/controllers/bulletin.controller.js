@@ -1,8 +1,7 @@
 'use strict';
 
-const { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML } = require('../services/bulletin.service');
+const { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML, genererBulletinAnnuelHTML } = require('../services/bulletin.service');
 const { Semestre } = require('../models/index');
-
 
 const telechargerBulletinSemestre = async (req, res) => {
   try {
@@ -31,12 +30,10 @@ const telechargerBulletinAnnuel = async (req, res) => {
   }
 };
 
-
 const telechargerBulletinHTML = async (req, res) => {
   try {
     const { etudiantId, semestreId } = req.params;
     const html = await genererBulletinHTML(etudiantId, semestreId);
-
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename=bulletin_S${semestreId}_etudiant${etudiantId}.html`);
     res.send(html);
@@ -45,5 +42,16 @@ const telechargerBulletinHTML = async (req, res) => {
   }
 };
 
-module.exports = { telechargerBulletinSemestre, telechargerBulletinAnnuel, telechargerBulletinHTML };
+const telechargerBulletinAnnuelHTML = async (req, res) => {
+  try {
+    const { etudiantId } = req.params;
+    const html = await genererBulletinAnnuelHTML(etudiantId);
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename=bulletin_annuel_etudiant${etudiantId}.html`);
+    res.send(html);
+  } catch (error) {
+    return res.status(500).json({ message: 'Erreur génération HTML.', erreur: error.message });
+  }
+};
 
+module.exports = { telechargerBulletinSemestre, telechargerBulletinAnnuel, telechargerBulletinHTML, telechargerBulletinAnnuelHTML };

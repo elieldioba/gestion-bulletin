@@ -1,7 +1,8 @@
 'use strict';
 
 const PDFDocument = require('pdfkit');
-const { Etudiant, Semestre, UE, Matiere, Evaluation, MoyenneMatiere, MoyenneUE, ResultatSemestre, ResultatAnnuel } = require('../models/index');
+const { Etudiant, Semestre, UE, Matiere, Evaluation, MoyenneMatiere, MoyenneUE, ResultatSemestre, ResultatAnnuel, Absence } = require('../models/index');
+
 
 
 // Calcul des statistiques de promotion pour un semestre
@@ -142,6 +143,45 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     rowY += 25;
     doc.y = rowY;
     doc.moveDown(0.5);
+  }
+
+  // ===== ABSENCES =====
+  const absencesEtudiant = [];
+  for (const ue of ues) {
+    const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
+    for (const matiere of matieres) {
+      const absence = await Absence.findOne({ where: { etudiantId, matiereId: matiere.id } });
+      if (absence && absence.heures > 0) {
+        absencesEtudiant.push({ matiere: matiere.libelle, heures: absence.heures });
+      }
+    }
+  }
+
+  if (absencesEtudiant.length > 0) {
+    doc.moveDown(0.5);
+    doc.moveTo(40, doc.y).lineTo(555, doc.y).strokeColor('#e74c3c').lineWidth(1).stroke();
+    doc.moveDown(0.3);
+    doc.fontSize(11).font('Helvetica-Bold').fillColor('#e74c3c').text('ABSENCES');
+    doc.moveDown(0.3);
+
+    const yAbs = doc.y;
+    doc.fillColor('#e74c3c').rect(40, yAbs, 515, 18).fill();
+    doc.fillColor('white').fontSize(9).font('Helvetica-Bold');
+    doc.text('Matière', 45, yAbs + 4, { width: 400 });
+    doc.text('Heures', 450, yAbs + 4, { width: 100, align: 'center' });
+
+    let rowAbsY = yAbs + 20;
+    for (let i = 0; i < absencesEtudiant.length; i++) {
+      const abs = absencesEtudiant[i];
+      doc.fillColor(i % 2 === 0 ? '#fdf2f2' : 'white').rect(40, rowAbsY, 515, 16).fill();
+      doc.fillColor('#333333').fontSize(8).font('Helvetica');
+      doc.text(abs.matiere, 45, rowAbsY + 3, { width: 400 });
+      doc.text(`${abs.heures}h`, 450, rowAbsY + 3, { width: 100, align: 'center' });
+      doc.moveTo(40, rowAbsY + 16).lineTo(555, rowAbsY + 16).strokeColor('#dddddd').stroke();
+      rowAbsY += 16;
+    }
+    doc.moveDown(3);
+    doc.y = rowAbsY + 10;
   }
 
  // ===== RESULTAT SEMESTRE =====
@@ -477,6 +517,120 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
   return html;
 };
 
-module.exports = { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML };
+const genererBulletinAnnuelHTML = async (etudiantId) => {
+  const etudiant = await Etudiant.findByPk(etudiantId);
+  const semestres = await Semestre.findAll();
+  const s5 = semestres.find(s => s.libelle === 'S5');
+  const s6 = semestres.find(s => s.libelle === 'S6');
+
+  const resultatS5 = await ResultatSemestre.findOne({ where: { etudiantId, semestreId: s5.id } });
+  const resultatS6 = await ResultatSemestre.findOne({ where: { etudiantId, semestreId: s6.id } });
+  const resultatAnnuel = await ResultatAnnuel.findOne({ where: { etudiantId } });
+
+  const decision = resultatAnnuel?.decisionJury === 'DIPLOME' ? 'DIPLÔMÉ(E)'
+    : resultatAnnuel?.decisionJury === 'REPRISE_SOUTENANCE' ? 'REPRISE DE SOUTENANCE'
+    : 'REDOUBLE LA LICENCE 3';
+
+  const mention = resultatAnnuel?.mention ? resultatAnnuel.mention.replace('_', ' ') : 'N/A';
+  const couleurDecision = resultatAnnuel?.decisionJury === 'DIPLOME' ? '#27ae60' : '#e74c3c';
+
+  const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Bulletin Annuel — ${etudiant.nom} ${etudiant.prenom}</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 30px; color: #333; }
+    h1, h2 { text-align: center; }
+    h1 { color: #1a1a2e; font-size: 18px; }
+    h2 { color: #2c3e50; font-size: 14px; }
+    h3 { color: #2c3e50; font-size: 13px; border-bottom: 2px solid #2c3e50; padding-bottom: 5px; }
+    .info-box { background: #f8f9fa; padding: 15px; border-radius: 5px; margin: 15px 0; }
+    table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 12px; }
+    th { background: #2c3e50; color: white; padding: 8px; text-align: center; }
+    td { padding: 6px 8px; border: 1px solid #ddd; text-align: center; }
+    tr:nth-child(even) { background: #f8f9fa; }
+    .decision { text-align: center; padding: 20px; margin: 20px 0; border-radius: 8px; border: 2px solid ${couleurDecision}; }
+    .decision h2 { color: ${couleurDecision}; font-size: 20px; margin: 0; }
+    .footer { text-align: center; color: #888; font-size: 11px; margin-top: 30px; }
+    .signatures { display: flex; justify-content: space-between; margin-top: 50px; }
+    .signature { text-align: center; width: 200px; }
+    @media print { body { margin: 10px; } }
+  </style>
+</head>
+<body>
+  <h1>INSTITUT NATIONAL DE LA POSTE ET DES TIC</h1>
+  <h2>Licence Professionnelle ASUR</h2>
+  <h2>BULLETIN ANNUEL | Année : ${s5?.anneeUniversitaire || '2025-2026'}</h2>
+
+  <div class="info-box">
+    <p><strong>Nom :</strong> ${etudiant.nom} &nbsp;&nbsp; <strong>Prénom :</strong> ${etudiant.prenom}</p>
+    <p><strong>Date de naissance :</strong> ${etudiant.dateNaissance || 'N/A'} &nbsp;&nbsp; <strong>Lieu :</strong> ${etudiant.lieuNaissance || 'N/A'}</p>
+    <p><strong>Baccalauréat :</strong> ${etudiant.typeBac || 'N/A'} &nbsp;&nbsp; <strong>Établissement :</strong> ${etudiant.provenance || 'N/A'}</p>
+  </div>
+
+  <h3>Résultats par Semestre</h3>
+  <table>
+    <thead>
+      <tr><th>Semestre</th><th>Moyenne</th><th>Crédits</th><th>Décision</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Semestre 5</td>
+        <td>${resultatS5?.moyenneSemestre ? resultatS5.moyenneSemestre + '/20' : 'N/A'}</td>
+        <td>${resultatS5 ? resultatS5.creditsTotal + '/30' : 'N/A'}</td>
+        <td style="color:${resultatS5?.valide ? '#27ae60' : '#e74c3c'}">${resultatS5?.valide ? 'Validé' : 'Non validé'}</td>
+      </tr>
+      <tr>
+        <td>Semestre 6</td>
+        <td>${resultatS6?.moyenneSemestre ? resultatS6.moyenneSemestre + '/20' : 'N/A'}</td>
+        <td>${resultatS6 ? resultatS6.creditsTotal + '/30' : 'N/A'}</td>
+        <td style="color:${resultatS6?.valide ? '#27ae60' : '#e74c3c'}">${resultatS6?.valide ? 'Validé' : 'Non validé'}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Résultat Annuel</h3>
+  <table>
+    <thead>
+      <tr><th>Moyenne Annuelle</th><th>Crédits Total</th><th>Mention</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>${resultatAnnuel?.moyenneAnnuelle ? resultatAnnuel.moyenneAnnuelle + '/20' : 'N/A'}</td>
+        <td>${(resultatS5?.creditsTotal || 0) + (resultatS6?.creditsTotal || 0)}/60</td>
+        <td>${mention}</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="decision">
+    <h2>Décision du Jury : ${decision}</h2>
+  </div>
+
+  <div class="signatures">
+    <div class="signature">
+      <p>Le Responsable pédagogique</p>
+      <br><br>
+      <p>Signature : _______________</p>
+    </div>
+    <div class="signature">
+      <p>Le Chef de département</p>
+      <br><br>
+      <p>Signature : _______________</p>
+    </div>
+  </div>
+
+  <div class="footer">
+    Document généré le ${new Date().toLocaleDateString('fr-FR')} — INPTIC LP ASUR
+  </div>
+</body>
+</html>`;
+
+  return html;
+};
+
+module.exports = { genererBulletinSemestre, genererBulletinAnnuel, genererBulletinHTML, genererBulletinAnnuelHTML };
+
 
 
