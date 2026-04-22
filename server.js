@@ -15,7 +15,7 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('✅ Connexion MySQL réussie');
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: false });
     console.log('✅ Base de données synchronisée');
 
 
