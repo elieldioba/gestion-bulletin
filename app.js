@@ -24,7 +24,7 @@ app.use('/api/audit', require('./src/routes/audit.routes'));
 app.use('/api/absences', require('./src/routes/absence.routes'));
 app.use('/api/statistiques', require('./src/routes/statistiques.routes'));
 app.use('/api/parametrage', require('./src/routes/parametrage.routes'));
-
+app.use('/api/utilisateurs', require('./src/routes/utilisateur.routes'));
 // Route de test
 app.get('/', (req, res) => {
   res.json({
