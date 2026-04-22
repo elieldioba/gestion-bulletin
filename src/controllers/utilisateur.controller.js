@@ -1,4 +1,3 @@
-utilisateur.controller
 'use strict';
 
 const { Utilisateur } = require('../models/index');
