@@ -6,13 +6,28 @@ const { enregistrerLog } = require('../services/audit.service');
 
 const listerAbsences = async (req, res) => {
   try {
+    const { etudiantId } = req.params;
+    let conditions = {};
+
+    // Si un ID est présent dans l'URL, on ajoute le filtre
+    if (etudiantId) {
+      conditions.etudiantId = etudiantId;
+    }
+
     const absences = await Absence.findAll({
-      where: { etudiantId: req.params.etudiantId },
-      include: [{ model: Matiere }]
+      where: conditions, // Sera vide {} pour "tout lister", ou { etudiantId: X } pour un filtre
+      include: [
+        { model: Matiere, attributes: ['libelle', 'code'] },
+        { model: Etudiant, attributes: ['nom', 'prenom'] } // Optionnel : pour voir à qui appartient l'absence
+      ]
     });
+
     return res.status(200).json(absences);
   } catch (error) {
-    return res.status(500).json({ message: 'Erreur serveur.', erreur: error.message });
+    return res.status(500).json({
+      message: 'Erreur serveur lors de la récupération des absences.',
+      erreur: error.message
+    });
   }
 };
 
