@@ -7,9 +7,6 @@ const userCtrl = require('../controllers/utilisateur.controller');
 // Optionnel : ajoute ton middleware d'auth ici plus tard pour protéger ces routes
 // const { verifierToken, autoriser } = require('../middlewares/auth.middleware');
 
-// --- Routes Publiques (ou semi-publiques) ---
-router.post('/login', userCtrl.connexion);
-router.post('/', userCtrl.creerUtilisateur); // Le POST pour la création
 
 // --- Routes d'Administration ---
 router.get('/', userCtrl.recupererTous);           // GET : Lire tout
