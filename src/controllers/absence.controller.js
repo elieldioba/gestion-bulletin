@@ -17,7 +17,7 @@ const listerAbsences = async (req, res) => {
     const absences = await Absence.findAll({
       where: conditions, // Sera vide {} pour "tout lister", ou { etudiantId: X } pour un filtre
       include: [
-        { model: Matiere, attributes: ['libelle', 'code'] },
+        { model: Matiere, attributes: ['libelle' /*'code'*/] },
         { model: Etudiant, attributes: ['nom', 'prenom'] } // Optionnel : pour voir à qui appartient l'absence
       ]
     });
