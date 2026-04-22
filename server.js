@@ -15,8 +15,9 @@ async function startServer() {
     await sequelize.authenticate();
     console.log('✅ Connexion MySQL réussie');
 
-    await sequelize.sync({ alter: false });
+    await sequelize.sync({ alter: true });
     console.log('✅ Base de données synchronisée');
+
 
     // Initialisation des paramètres par défaut
     const parametresDefaut = [
