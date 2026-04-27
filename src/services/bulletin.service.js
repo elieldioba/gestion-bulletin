@@ -107,8 +107,11 @@ const drawEnTete = (doc) => {
 // ─────────────────────────────────────────────
 
 const genererBulletinSemestre = async (etudiantId, semestreId) => {
+  console.log(">>> Début génération bulletin semestre", { etudiantId, semestreId });
   const etudiant = await Etudiant.findByPk(etudiantId);
+  console.log(">>> Etudiant:", etudiant?.nom, etudiant?.prenom);
   const semestre = await Semestre.findByPk(semestreId);
+  console.log(">>> Semestre:", semestre?.libelle);
   const ues = await UE.findAll({ where: { semestreId } });
   const resultat = await ResultatSemestre.findOne({ where: { etudiantId, semestreId } });
 
@@ -212,6 +215,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
 
   for (const ue of ues) {
     const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
+    console.log(">>> UE:", ue.code, ue.libelle, "| nb matieres:", matieres.length);
     const moyenneUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
     const moyClasseUE = await getMoyenneClasseUE(ue.id);
 
@@ -228,6 +232,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     // Lignes matières
     for (let i = 0; i < matieres.length; i++) {
       const mat = matieres[i];
+      console.log("    Matiere:", mat.libelle, "| coef:", mat.coefficient, "(type:", typeof mat.coefficient, ") | credits:", mat.credits);
       const moyMat = await MoyenneMatiere.findOne({ where: { etudiantId, matiereId: mat.id } });
       const moyClasseMat = await getMoyenneClasseMatiere(mat.id);
       const noteMat = moyMat?.moyenne ?? null;
