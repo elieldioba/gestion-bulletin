@@ -8,10 +8,17 @@ const { Etudiant, Semestre, UE, Matiere, Evaluation, MoyenneMatiere, MoyenneUE, 
 // ─────────────────────────────────────────────
 
 const fmt = (v, dec = 2) => {
-  if (v === null || v === undefined || isNaN(v)) return '-';
+  if (v === null || v === undefined) return '-';
   const n = parseFloat(v);
   if (isNaN(n)) return '-';
   return n.toFixed(dec);
+};
+
+// Protection totale contre NaN pour tout nombre utilisé dans PDFKit
+const safeNum = (v, fallback = 0) => {
+  if (v === null || v === undefined) return fallback;
+  const n = parseFloat(v);
+  return isNaN(n) ? fallback : n;
 };
 
 const getRang = async (etudiantId, semestreId) => {
@@ -21,7 +28,7 @@ const getRang = async (etudiantId, semestreId) => {
   const tries = tous
     .filter(r => r.moyenneSemestre !== null)
     .sort((a, b) => b.moyenneSemestre - a.moyenneSemestre);
-  const pos = tries.findIndex(r => r.etudiantId === etudiantId);
+  const pos = tries.findIndex(r => parseInt(r.etudiantId) === etudiantId);
   return pos === -1 ? null : pos + 1;
 };
 
@@ -31,33 +38,35 @@ const getRangAnnuel = async (etudiantId) => {
   const tries = tous
     .filter(r => r.moyenneAnnuelle !== null)
     .sort((a, b) => b.moyenneAnnuelle - a.moyenneAnnuelle);
-  const pos = tries.findIndex(r => r.etudiantId === etudiantId);
+  const pos = tries.findIndex(r => parseInt(r.etudiantId) === etudiantId);
   return pos === -1 ? null : pos + 1;
 };
 
 const getMoyenneClasseSemestre = async (semestreId) => {
   const tous = await ResultatSemestre.findAll({ where: { semestreId } });
-  const valeurs = tous.filter(r => r.moyenneSemestre !== null).map(r => r.moyenneSemestre);
+  const valeurs = tous.filter(r => r.moyenneSemestre !== null).map(r => safeNum(r.moyenneSemestre));
   if (!valeurs.length) return null;
   return valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
 };
 
 const getMoyenneClasseUE = async (ueId) => {
+  if (!ueId) return null;
   const tous = await MoyenneUE.findAll({ where: { ueId } });
-  const valeurs = tous.filter(r => r.moyenne !== null).map(r => r.moyenne);
+  const valeurs = tous.filter(r => r.moyenne !== null).map(r => safeNum(r.moyenne));
   if (!valeurs.length) return null;
   return valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
 };
 
 const getMoyenneClasseMatiere = async (matiereId) => {
+  if (!matiereId) return null;
   const tous = await MoyenneMatiere.findAll({ where: { matiereId } });
-  const valeurs = tous.filter(r => r.moyenne !== null).map(r => r.moyenne);
+  const valeurs = tous.filter(r => r.moyenne !== null).map(r => safeNum(r.moyenne));
   if (!valeurs.length) return null;
   return valeurs.reduce((a, b) => a + b, 0) / valeurs.length;
 };
 
 const getMention = (moy) => {
-  if (moy === null) return 'N/A';
+  if (moy === null || moy === undefined || isNaN(moy)) return 'N/A';
   if (moy >= 16) return 'Très Bien';
   if (moy >= 14) return 'Bien';
   if (moy >= 12) return 'Assez Bien';
@@ -81,19 +90,16 @@ const drawRect = (doc, x, y, w, h, fillColor) => {
   doc.rect(x, y, w, h).fill(fillColor);
 };
 
-// En-tête République Gabonaise + INPTIC
 const drawEnTete = (doc) => {
   const pageW = 595;
   const M = 40;
 
-  // Colonne gauche : INPTIC
   doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
   doc.text('INSTITUT NATIONAL DE LA POSTE, DES TECHNOLOGIES', M, 30, { width: 200 });
   doc.text("DE L'INFORMATION ET DE LA COMMUNICATION", M, 40, { width: 200 });
   doc.fontSize(7).font('Helvetica').fillColor('#003399');
   doc.text('DIRECTION DES ETUDES ET DE LA PEDAGOGIE', M, 55, { width: 200 });
 
-  // Colonne droite : République Gabonaise
   doc.fontSize(7).font('Helvetica-Bold').fillColor('#000000');
   doc.text('RÉPUBLIQUE GABONAISE', pageW - M - 150, 30, { width: 150, align: 'right' });
   doc.fontSize(7).font('Helvetica').fillColor('#000000');
@@ -101,24 +107,34 @@ const drawEnTete = (doc) => {
   doc.text('Union - Travail - Justice', pageW - M - 150, 50, { width: 150, align: 'right' });
   doc.text('- - - - - - - - - - -', pageW - M - 150, 60, { width: 150, align: 'right' });
 
-  // Ligne séparatrice
   drawHLine(doc, M, pageW - M, 75, '#000000', 1);
 };
 
 // ─────────────────────────────────────────────
-// BULLETIN SEMESTRE (S5 ou S6)
+// BULLETIN SEMESTRE
 // ─────────────────────────────────────────────
 
 const genererBulletinSemestre = async (etudiantId, semestreId) => {
   etudiantId = parseInt(etudiantId);
   semestreId = parseInt(semestreId);
-  console.log(">>> Début génération bulletin semestre", { etudiantId, semestreId });
+
+  console.log(">>> [1] Début génération bulletin semestre", { etudiantId, semestreId });
+
   const etudiant = await Etudiant.findByPk(etudiantId);
-  console.log(">>> Etudiant:", etudiant?.nom, etudiant?.prenom);
+  console.log(">>> [2] Etudiant:", etudiant ? `${etudiant.nom} ${etudiant.prenom}` : 'NULL');
+
+  if (!etudiant) throw new Error(`Étudiant introuvable pour l'id: ${etudiantId}`);
+
   const semestre = await Semestre.findByPk(semestreId);
-  console.log(">>> Semestre:", semestre?.libelle);
+  console.log(">>> [3] Semestre:", semestre ? semestre.libelle : 'NULL');
+
+  if (!semestre) throw new Error(`Semestre introuvable pour l'id: ${semestreId}`);
+
   const ues = await UE.findAll({ where: { semestreId } });
+  console.log(">>> [4] Nombre UEs:", ues.length);
+
   const resultat = await ResultatSemestre.findOne({ where: { etudiantId, semestreId } });
+  console.log(">>> [5] Résultat semestre:", resultat ? `moy=${resultat.moyenneSemestre}` : 'NULL');
 
   const rang = await getRang(etudiantId, semestreId);
   const nbEtudiants = (await ResultatSemestre.findAll({ where: { semestreId } })).length;
@@ -126,18 +142,18 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
   const mention = getMention(resultat?.moyenneSemestre ?? null);
 
   // Absences
-  const absencesMap = {};
   let totalAbsences = 0;
   for (const ue of ues) {
     const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
     for (const m of matieres) {
       const abs = await Absence.findOne({ where: { etudiantId, matiereId: m.id } });
       if (abs && abs.heures > 0) {
-        absencesMap[m.id] = abs.heures;
-        totalAbsences += abs.heures;
+        totalAbsences += safeNum(abs.heures);
       }
     }
   }
+
+  console.log(">>> [6] Total absences:", totalAbsences);
 
   const doc = new PDFDocument({ margin: 0, size: 'A4' });
   const buffers = [];
@@ -145,31 +161,24 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
 
   const M = 40;
   const pageW = 595;
-  const colW = pageW - 2 * M; // 515
+  const colW = pageW - 2 * M;
 
-  // ── EN-TÊTE ──
   drawEnTete(doc);
 
-  // Titre
-  doc.moveDown(0.2);
   doc.y = 90;
   doc.fontSize(14).font('Helvetica-Bold').fillColor('#000000')
      .text(`Bulletin de notes du ${semestre.libelle}`, { align: 'center' });
   doc.fontSize(10).font('Helvetica')
-     .text(`Année universitaire : ${semestre.anneeUniversitaire}`, { align: 'center' });
+     .text(`Année universitaire : ${semestre.anneeUniversitaire || '2025-2026'}`, { align: 'center' });
 
-  // Classe
   doc.moveDown(0.4);
   const clY = doc.y;
   drawRect(doc, M, clY, colW, 22, '#ffffff');
   doc.rect(M, clY, colW, 22).strokeColor('#000000').lineWidth(1.5).stroke();
   doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000')
      .text('Classe : Licence Professionnelle Réseaux et Télécommunications  Option ', M + 5, clY + 6, { continued: true })
-     .font('Helvetica-Bold').underline(true)
      .text('Administration et Sécurité des Réseaux (ASUR)', { underline: true });
-  doc.moveDown(0.2);
 
-  // Infos étudiant
   doc.y = clY + 28;
   const infoY = doc.y;
   const infoH = 30;
@@ -180,7 +189,6 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
   doc.fontSize(8).font('Helvetica').fillColor('#000000');
   doc.text("Nom(s) et Prénom(s)", M + 3, infoY + 4, { width: colW * 0.28 });
   doc.text("Date et lieu de naissance", M + 3, infoY + infoH / 2 + 4, { width: colW * 0.28 });
-
   doc.fontSize(9).font('Helvetica-Bold');
   doc.text(`${etudiant.nom} ${etudiant.prenom}`, M + colW * 0.3 + 5, infoY + 4, { width: colW * 0.65 });
   doc.fontSize(8).font('Helvetica');
@@ -192,7 +200,6 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
   // ── TABLEAU NOTES ──
   doc.y = infoY + infoH + 8;
 
-  // Colonnes : Matière | Crédits | Coefficients | Notes étudiant | Moy. classe
   const cols = {
     matiere: { x: M, w: 210 },
     credits: { x: M + 210, w: 50 },
@@ -209,7 +216,6 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     doc.text('Coefficients', cols.coef.x, y + 3, { width: cols.coef.w, align: 'center' });
     doc.text("Notes de l'étudiant", cols.note.x, y + 3, { width: cols.note.w, align: 'center' });
     doc.text('Moyenne de classe', cols.moyClasse.x, y + 3, { width: cols.moyClasse.w, align: 'center' });
-    // Séparateurs verticaux
     [cols.credits.x, cols.coef.x, cols.note.x, cols.moyClasse.x, M + colW].forEach(x => {
       drawVLine(doc, x, y, y + 16);
     });
@@ -220,11 +226,11 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
 
   for (const ue of ues) {
     const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
-    console.log(">>> UE:", ue.code, ue.libelle, "| nb matieres:", matieres.length);
+    console.log(`>>> [7] UE ${ue.code} - ${matieres.length} matières`);
+
     const moyenneUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
     const moyClasseUE = await getMoyenneClasseUE(ue.id);
 
-    // En-tête UE
     drawRect(doc, M, rowY, colW, 14, '#dce6f1');
     doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#003399');
@@ -234,24 +240,27 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     });
     rowY += 14;
 
-    // Lignes matières
     for (let i = 0; i < matieres.length; i++) {
       const mat = matieres[i];
-      console.log("    Matiere:", mat.libelle, "| coef:", mat.coefficient, "(type:", typeof mat.coefficient, ") | credits:", mat.credits);
+      console.log(`    Matière: ${mat.libelle} | coef: ${mat.coefficient} (${typeof mat.coefficient}) | credits: ${mat.credits} (${typeof mat.credits})`);
+
       const moyMat = await MoyenneMatiere.findOne({ where: { etudiantId, matiereId: mat.id } });
       const moyClasseMat = await getMoyenneClasseMatiere(mat.id);
       const noteMat = moyMat?.moyenne ?? null;
+
+      // Protection totale des valeurs numériques
+      const creditsVal = safeNum(mat.credits, 0);
+      const coefVal = safeNum(mat.coefficient, 0);
 
       const bg = i % 2 === 0 ? '#ffffff' : '#f5f5f5';
       drawRect(doc, M, rowY, colW, 14, bg);
       doc.rect(M, rowY, colW, 14).strokeColor('#cccccc').lineWidth(0.3).stroke();
       doc.fontSize(8).font('Helvetica').fillColor('#000000');
       doc.text(`    ${mat.libelle}`, M + 2, rowY + 3, { width: cols.credits.x - M - 4 });
-      doc.text(mat.credits.toString(), cols.credits.x, rowY + 3, { width: cols.credits.w, align: 'center' });
-      doc.text(fmt(mat.coefficient), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
+      doc.text(creditsVal.toString(), cols.credits.x, rowY + 3, { width: cols.credits.w, align: 'center' });
+      doc.text(fmt(coefVal), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
 
-      // Note étudiant en bleu/rouge
-      const noteColor = noteMat !== null ? (noteMat >= 10 ? '#003399' : '#cc0000') : '#000000';
+      const noteColor = noteMat !== null ? (safeNum(noteMat) >= 10 ? '#003399' : '#cc0000') : '#000000';
       doc.fillColor(noteColor).font('Helvetica-Bold')
          .text(fmt(noteMat), cols.note.x, rowY + 3, { width: cols.note.w, align: 'center' });
       doc.fillColor('#000000').font('Helvetica')
@@ -264,24 +273,25 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     }
 
     // Ligne Moyenne UE
+    const creditsUE = matieres.reduce((s, m) => s + safeNum(m.credits, 0), 0);
+    const coefUE = matieres.reduce((s, m) => s + safeNum(m.coefficient, 0), 0);
+
     drawRect(doc, M, rowY, colW, 14, '#eaf0fb');
     doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
-    const creditsUE = matieres.reduce((s, m) => s + m.credits, 0);
     doc.text(`        Moyenne ${ue.code}`, M + 2, rowY + 3, { width: cols.credits.x - M - 2 });
     doc.text(creditsUE.toString(), cols.credits.x, rowY + 3, { width: cols.credits.w, align: 'center' });
-    const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
     doc.text(coefUE.toFixed(2), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
+
     const moyUE = moyenneUE?.moyenne ?? null;
-    const couleurUE = moyUE !== null ? (moyUE >= 10 ? '#003399' : '#cc0000') : '#000000';
+    const couleurUE = moyUE !== null ? (safeNum(moyUE) >= 10 ? '#003399' : '#cc0000') : '#000000';
     doc.fillColor(couleurUE).text(fmt(moyUE), cols.note.x, rowY + 3, { width: cols.note.w, align: 'center' });
     doc.fillColor('#000000').text(fmt(moyClasseUE), cols.moyClasse.x, rowY + 3, { width: cols.moyClasse.w, align: 'center' });
+
     [cols.credits.x, cols.coef.x, cols.note.x, cols.moyClasse.x, M + colW].forEach(x => {
       drawVLine(doc, x, rowY, rowY + 14);
     });
     rowY += 14;
-
-    // Espacement inter-UE
     rowY += 4;
   }
 
@@ -290,7 +300,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
   drawRect(doc, M, rowY, colW, 14, '#ffffff');
   doc.rect(M, rowY, colW, 14).strokeColor('#cccccc').lineWidth(0.3).stroke();
   doc.fontSize(8).font('Helvetica').fillColor('#cc0000');
-  doc.text('Pénalités d\'absences', M + 4, rowY + 3, { width: 200 });
+  doc.text("Pénalités d'absences", M + 4, rowY + 3, { width: 200 });
   doc.fillColor('#cc0000').font('Helvetica-Bold')
      .text('0,01/heure', cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
   doc.fillColor('#000000').font('Helvetica')
@@ -306,7 +316,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
   doc.fontSize(9).font('Helvetica-Bold').fillColor('#000000');
   doc.text(`Moyenne ${semestre.libelle}`, M + 4, rowY + 3, { width: 250 });
   const moySem = resultat?.moyenneSemestre ?? null;
-  const couleurSem = moySem !== null ? (moySem >= 10 ? '#003399' : '#cc0000') : '#000000';
+  const couleurSem = moySem !== null ? (safeNum(moySem) >= 10 ? '#003399' : '#cc0000') : '#000000';
   doc.fillColor(couleurSem)
      .text(fmt(moySem), cols.note.x, rowY + 3, { width: cols.note.w, align: 'center' });
   doc.fillColor('#000000')
@@ -337,25 +347,23 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
      .text(`Etat de la Validation des Crédits au ${semestre.libelle}`, M, rowY + 3, { align: 'center' });
   rowY += 14;
 
-  // Tableau 3 colonnes : UE1 | UE2 | Crédits total
   const nbUE = ues.length;
   const cw3 = colW / (nbUE + 1);
   const cellH = 32;
 
-  // En-têtes colonnes
-  for (let i = 0; i < nbUE; i++) {
+  for (let i = 0; i <= nbUE; i++) {
     doc.rect(M + i * cw3, rowY, cw3, cellH).strokeColor('#000000').lineWidth(0.5).stroke();
   }
-  doc.rect(M + nbUE * cw3, rowY, cw3, cellH).strokeColor('#000000').lineWidth(0.5).stroke();
 
   doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
   for (let i = 0; i < nbUE; i++) {
     const ue = ues[i];
     const moyUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
-    const credAcquis = moyUE?.creditsAcquis ?? 0;
-    const creditsTot = (await Matiere.findAll({ where: { ueId: ue.id } })).reduce((s, m) => s + m.credits, 0);
+    const mats = await Matiere.findAll({ where: { ueId: ue.id } });
+    const credAcquis = safeNum(moyUE?.creditsAcquis, 0);
+    const creditsTot = mats.reduce((s, m) => s + safeNum(m.credits, 0), 0);
     const compense = moyUE?.compense ?? false;
-    const statut = compense ? 'UE Acquise par Compensation' : credAcquis >= creditsTot ? 'UE Acquise' : 'UE non Acquise';
+    const statut = compense ? 'UE Acquise par Compensation' : (credAcquis >= creditsTot && creditsTot > 0) ? 'UE Acquise' : 'UE non Acquise';
 
     doc.text(`${ue.code}`, M + i * cw3 + 4, rowY + 3, { width: cw3 - 8, align: 'center' });
     doc.fontSize(7).font('Helvetica')
@@ -364,8 +372,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     doc.fontSize(8).font('Helvetica-Bold');
   }
 
-  // Colonne crédits total
-  const credTotal = resultat?.creditsTotal ?? 0;
+  const credTotal = safeNum(resultat?.creditsTotal, 0);
   const totalCredits = 30;
   const semValide = resultat?.valide ?? false;
   doc.fontSize(8).font('Helvetica-Bold')
@@ -413,10 +420,17 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
 
 const genererBulletinAnnuel = async (etudiantId) => {
   etudiantId = parseInt(etudiantId);
+
+  console.log(">>> [1] Début génération bulletin annuel", { etudiantId });
+
   const etudiant = await Etudiant.findByPk(etudiantId);
+  console.log(">>> [2] Etudiant:", etudiant ? `${etudiant.nom} ${etudiant.prenom}` : 'NULL');
+  if (!etudiant) throw new Error(`Étudiant introuvable pour l'id: ${etudiantId}`);
+
   const semestres = await Semestre.findAll();
   const s5 = semestres.find(s => s.libelle === 'S5');
   const s6 = semestres.find(s => s.libelle === 'S6');
+  console.log(">>> [3] S5:", s5?.id, "| S6:", s6?.id);
 
   const resultatS5 = s5 ? await ResultatSemestre.findOne({ where: { etudiantId, semestreId: s5.id } }) : null;
   const resultatS6 = s6 ? await ResultatSemestre.findOne({ where: { etudiantId, semestreId: s6.id } }) : null;
@@ -425,11 +439,10 @@ const genererBulletinAnnuel = async (etudiantId) => {
   const rangAnnuel = await getRangAnnuel(etudiantId);
   const nbEtudiants = (await ResultatAnnuel.findAll()).length;
 
-  // Moyennes classe par semestre
   const moyClasseS5 = s5 ? await getMoyenneClasseSemestre(s5.id) : null;
   const moyClasseS6 = s6 ? await getMoyenneClasseSemestre(s6.id) : null;
   const moyClasseAnnuelle = (moyClasseS5 !== null && moyClasseS6 !== null)
-    ? (moyClasseS5 + moyClasseS6) / 2 : null;
+    ? (moyClasseS5 + moyClasseS6) / 2 : (moyClasseS5 ?? moyClasseS6 ?? null);
 
   const mention = getMention(resultatAnnuel?.moyenneAnnuelle ?? null);
 
@@ -445,16 +458,14 @@ const genererBulletinAnnuel = async (etudiantId) => {
   const pageW = 595;
   const colW = pageW - 2 * M;
 
-  // ── EN-TÊTE ──
   drawEnTete(doc);
   doc.y = 90;
   doc.fontSize(14).font('Helvetica-Bold').fillColor('#000000')
      .text('Bulletin de notes Annuel', { align: 'center' });
   doc.fontSize(10).font('Helvetica')
-     .text(`Année universitaire : ${s5?.anneeUniversitaire || '2025-2026'}`, { align: 'center' });
+     .text(`Année universitaire : ${s5?.anneeUniversitaire || s6?.anneeUniversitaire || '2025-2026'}`, { align: 'center' });
   doc.moveDown(0.3);
 
-  // Classe
   const clY = doc.y;
   doc.rect(M, clY, colW, 22).fill('#ffffff').stroke();
   doc.rect(M, clY, colW, 22).strokeColor('#000000').lineWidth(1.5).stroke();
@@ -462,7 +473,6 @@ const genererBulletinAnnuel = async (etudiantId) => {
      .text('Classe : Licence Professionnelle Réseaux et Télécommunications  Option ', M + 5, clY + 6, { continued: true })
      .text('Administration et Sécurité des Réseaux (ASUR)', { underline: true });
 
-  // Infos étudiant
   const infoY = clY + 26;
   const infoH = 30;
   doc.rect(M, infoY, colW * 0.3, infoH).strokeColor('#000000').lineWidth(0.5).stroke();
@@ -480,19 +490,16 @@ const genererBulletinAnnuel = async (etudiantId) => {
     : 'N/A';
   doc.text(lieu, M + colW * 0.3 + 5, infoY + infoH / 2 + 4, { width: colW * 0.65 });
 
-  // ── RANG DE L'ÉTUDIANT À L'ANNÉE ──
   doc.y = infoY + infoH + 8;
   const rangY = doc.y;
   doc.rect(M, rangY, colW, 14).fill('#f0f0f0').stroke();
   doc.rect(M, rangY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
   doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000')
      .text("Rang de l'étudiant à l'année", M + 4, rangY + 3, { width: 200 });
-  const rangAnnuelText = rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : '#REF!';
+  const rangAnnuelText = rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : 'Non classé';
   doc.text(rangAnnuelText, M + 200, rangY + 3, { width: colW - 204 });
   doc.y = rangY + 18;
 
-  // ── TABLEAU ANNUEL PAR UE ──
-  // Colonnes : UE/Matière | Coeff | Notes | Rang | Moy. classe
   const colsA = {
     label: { x: M, w: 170 },
     coef: { x: M + 170, w: 60 },
@@ -516,108 +523,88 @@ const genererBulletinAnnuel = async (etudiantId) => {
 
   let rowY = drawHeaderAnnuel(doc.y);
 
-  // Données par UE et par semestre
-  const semestresData = [
-    { sem: s5, res: resultatS5, label: 'Semestre 1', moyC: moyClasseS5 },
-    { sem: s6, res: resultatS6, label: 'Semestre 2', moyC: moyClasseS6 },
-  ];
-
-  // Récupérer toutes les UE regroupées par semestre
-  const allUEs = [];
-  for (const { sem, res, label, moyC } of semestresData) {
-    if (!sem) continue;
-    const ues = await UE.findAll({ where: { semestreId: sem.id } });
-    allUEs.push({ label, ues, res, moyC, semestreId: sem.id });
-  }
-
-  // Afficher UE par ligne (structure du bulletin cible)
-  // Ligne UE avec S1 / S2 / Annuel
-  const ueGroups = [];
+  // UE groupées par paires S5/S6
   if (s5 && s6) {
     const uesS5 = await UE.findAll({ where: { semestreId: s5.id } });
     const uesS6 = await UE.findAll({ where: { semestreId: s6.id } });
-
-    // Grouper par position
     const maxUE = Math.max(uesS5.length, uesS6.length);
+
     for (let i = 0; i < maxUE; i++) {
-      ueGroups.push({ ueS5: uesS5[i] || null, ueS6: uesS6[i] || null });
-    }
-  }
+      const ueS5 = uesS5[i] || null;
+      const ueS6 = uesS6[i] || null;
+      const ueLabel = ueS5 ? ueS5.libelle : (ueS6 ? ueS6.libelle : '');
 
-  // Pour chaque UE group, afficher la section
-  for (const group of ueGroups) {
-    // En-tête groupe UE
-    const ueLabel = group.ueS5 ? group.ueS5.libelle : (group.ueS6 ? group.ueS6.libelle : '');
-    drawRect(doc, M, rowY, colW, 14, '#dce6f1');
-    doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#003399')
-       .text(ueLabel, M + 4, rowY + 3, { width: 250 });
-    Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
-    drawVLine(doc, M + colW, rowY, rowY + 14);
-    rowY += 14;
-
-    const rows = [
-      { sem: 'Semestre 1', ue: group.ueS5, semestreId: s5?.id, res: resultatS5, moyC: moyClasseS5 },
-      { sem: 'Semestre 2', ue: group.ueS6, semestreId: s6?.id, res: resultatS6, moyC: moyClasseS6 },
-    ];
-
-    for (const row of rows) {
-      const matieres = row.ue ? await Matiere.findAll({ where: { ueId: row.ue.id } }) : [];
-      const moyUE = row.ue ? await MoyenneUE.findOne({ where: { etudiantId, ueId: row.ue.id } }) : null;
-      const moyClasseUEVal = row.ue ? await getMoyenneClasseUE(row.ue.id) : null;
-      const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
-
-      const rangSem = row.semestreId ? await getRang(etudiantId, row.semestreId) : null;
-      const nbEtSem = row.semestreId ? (await ResultatSemestre.findAll({ where: { semestreId: row.semestreId } })).length : 0;
-
-      drawRect(doc, M, rowY, colW, 14, '#ffffff');
-      doc.rect(M, rowY, colW, 14).strokeColor('#cccccc').lineWidth(0.3).stroke();
-      doc.fontSize(8).font('Helvetica').fillColor('#000000');
-      doc.text(`    ${row.sem}`, M + 2, rowY + 3, { width: colsA.coef.x - M - 4 });
-      doc.text(coefUE.toFixed(2), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
-
-      const moyVal = moyUE?.moyenne ?? null;
-      const couleur = moyVal !== null ? (moyVal >= 10 ? '#003399' : '#cc0000') : '#000000';
-      doc.fillColor(couleur).font('Helvetica-Bold')
-         .text(fmt(moyVal), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
-
-      doc.fillColor('#000000').font('Helvetica');
-      const rangTexte = rangSem ? `${rangSem}/${nbEtSem}` : '#REF!';
-      doc.text(rangTexte, colsA.rang.x, rowY + 3, { width: colsA.rang.w, align: 'center' });
-      doc.text(fmt(moyClasseUEVal), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
-
+      drawRect(doc, M, rowY, colW, 14, '#dce6f1');
+      doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#003399')
+         .text(ueLabel, M + 4, rowY + 3, { width: 250 });
       Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
       drawVLine(doc, M + colW, rowY, rowY + 14);
       rowY += 14;
+
+      const rows = [
+        { sem: 'Semestre 1', ue: ueS5, semestreId: s5.id, res: resultatS5, moyC: moyClasseS5 },
+        { sem: 'Semestre 2', ue: ueS6, semestreId: s6.id, res: resultatS6, moyC: moyClasseS6 },
+      ];
+
+      for (const row of rows) {
+        const matieres = row.ue ? await Matiere.findAll({ where: { ueId: row.ue.id } }) : [];
+        const moyUE = row.ue ? await MoyenneUE.findOne({ where: { etudiantId, ueId: row.ue.id } }) : null;
+        const moyClasseUEVal = row.ue ? await getMoyenneClasseUE(row.ue.id) : null;
+        const coefUE = matieres.reduce((s, m) => s + safeNum(m.coefficient, 0), 0);
+
+        const rangSem = await getRang(etudiantId, row.semestreId);
+        const nbEtSem = (await ResultatSemestre.findAll({ where: { semestreId: row.semestreId } })).length;
+
+        drawRect(doc, M, rowY, colW, 14, '#ffffff');
+        doc.rect(M, rowY, colW, 14).strokeColor('#cccccc').lineWidth(0.3).stroke();
+        doc.fontSize(8).font('Helvetica').fillColor('#000000');
+        doc.text(`    ${row.sem}`, M + 2, rowY + 3, { width: colsA.coef.x - M - 4 });
+        doc.text(coefUE.toFixed(2), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
+
+        const moyVal = moyUE?.moyenne ?? null;
+        const couleur = moyVal !== null ? (safeNum(moyVal) >= 10 ? '#003399' : '#cc0000') : '#000000';
+        doc.fillColor(couleur).font('Helvetica-Bold')
+           .text(fmt(moyVal), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
+
+        doc.fillColor('#000000').font('Helvetica');
+        const rangTexte = rangSem ? `${rangSem}/${nbEtSem}` : 'N/A';
+        doc.text(rangTexte, colsA.rang.x, rowY + 3, { width: colsA.rang.w, align: 'center' });
+        doc.text(fmt(moyClasseUEVal), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
+
+        Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
+        drawVLine(doc, M + colW, rowY, rowY + 14);
+        rowY += 14;
+      }
+
+      // Ligne Annuel UE
+      const matS5 = ueS5 ? await Matiere.findAll({ where: { ueId: ueS5.id } }) : [];
+      const matS6 = ueS6 ? await Matiere.findAll({ where: { ueId: ueS6.id } }) : [];
+      const coefAnnuelUE = [...matS5, ...matS6].reduce((s, m) => s + safeNum(m.coefficient, 0), 0);
+
+      const moyUES5 = ueS5 ? await MoyenneUE.findOne({ where: { etudiantId, ueId: ueS5.id } }) : null;
+      const moyUES6 = ueS6 ? await MoyenneUE.findOne({ where: { etudiantId, ueId: ueS6.id } }) : null;
+      const moyAnnUE = (moyUES5?.moyenne != null && moyUES6?.moyenne != null)
+        ? (safeNum(moyUES5.moyenne) + safeNum(moyUES6.moyenne)) / 2
+        : (moyUES5?.moyenne ?? moyUES6?.moyenne ?? null);
+
+      const mc1 = await getMoyenneClasseUE(ueS5?.id) ?? 0;
+      const mc2 = await getMoyenneClasseUE(ueS6?.id) ?? 0;
+      const moyClasseAnnUE = mc1 && mc2 ? (mc1 + mc2) / 2 : (mc1 || mc2 || null);
+
+      drawRect(doc, M, rowY, colW, 14, '#eaf0fb');
+      doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
+      doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
+      doc.text('        Annuel', M + 2, rowY + 3, { width: colsA.coef.x - M - 2 });
+      doc.text(coefAnnuelUE.toFixed(2), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
+      doc.text(fmt(moyAnnUE), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
+      doc.text('', colsA.rang.x, rowY + 3, { width: colsA.rang.w, align: 'center' });
+      doc.text(fmt(moyClasseAnnUE), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
+
+      Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
+      drawVLine(doc, M + colW, rowY, rowY + 14);
+      rowY += 18;
     }
-
-    // Ligne Annuel UE
-    const moyUES5 = group.ueS5 ? await MoyenneUE.findOne({ where: { etudiantId, ueId: group.ueS5.id } }) : null;
-    const moyUES6 = group.ueS6 ? await MoyenneUE.findOne({ where: { etudiantId, ueId: group.ueS6.id } }) : null;
-    const matS5 = group.ueS5 ? await Matiere.findAll({ where: { ueId: group.ueS5.id } }) : [];
-    const matS6 = group.ueS6 ? await Matiere.findAll({ where: { ueId: group.ueS6.id } }) : [];
-    const coefAnnuel = matS5.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0) + matS6.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
-    const creditsAnnuel = matS5.reduce((s, m) => s + m.credits, 0) + matS6.reduce((s, m) => s + m.credits, 0);
-
-    const moyAnnUE = (moyUES5?.moyenne != null && moyUES6?.moyenne != null)
-      ? (moyUES5.moyenne + moyUES6.moyenne) / 2
-      : (moyUES5?.moyenne ?? moyUES6?.moyenne ?? null);
-
-    drawRect(doc, M, rowY, colW, 14, '#eaf0fb');
-    doc.rect(M, rowY, colW, 14).strokeColor('#000000').lineWidth(0.5).stroke();
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#000000');
-    doc.text(`        Annuel`, M + 2, rowY + 3, { width: colsA.coef.x - M - 2 });
-    doc.text(coefAnnuel.toFixed(2), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
-    doc.text(creditsAnnuel.toString(), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
-
-    const mc1 = (await getMoyenneClasseUE(group.ueS5?.id)) || 0;
-    const mc2 = (await getMoyenneClasseUE(group.ueS6?.id)) || 0;
-    const moyClasseAnnUE = (mc1 && mc2) ? (mc1 + mc2) / 2 : (mc1 || mc2 || null);
-    doc.text(fmt(moyClasseAnnUE), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
-
-    Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
-    drawVLine(doc, M + colW, rowY, rowY + 14);
-    rowY += 18;
   }
 
   // ── BILAN ANNUEL ──
@@ -637,8 +624,10 @@ const genererBulletinAnnuel = async (etudiantId) => {
 
   for (let i = 0; i < bilanRows.length; i++) {
     const row = bilanRows[i];
-    const rangSem = row.semestreId ? await getRang(etudiantId, row.semestreId) : row.rang;
-    const nbEtSem = row.semestreId ? (await ResultatSemestre.findAll({ where: { semestreId: row.semestreId } })).length : (row.nbEt ?? nbEtudiants);
+    const rangSem = row.semestreId ? await getRang(etudiantId, row.semestreId) : (row.rang ?? null);
+    const nbEtSem = row.semestreId
+      ? (await ResultatSemestre.findAll({ where: { semestreId: row.semestreId } })).length
+      : (row.nbEt ?? nbEtudiants);
 
     const bg = i % 2 === 0 ? '#f5f5f5' : '#ffffff';
     drawRect(doc, M, rowY, colW, 14, bg);
@@ -647,12 +636,12 @@ const genererBulletinAnnuel = async (etudiantId) => {
     doc.text(`    ${row.label}`, M + 2, rowY + 3, { width: colsA.coef.x - M - 4 });
     doc.text(row.coef.toString(), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
 
-    const couleur = row.note !== null ? (row.note >= 10 ? '#003399' : '#cc0000') : '#000000';
+    const couleur = row.note !== null ? (safeNum(row.note) >= 10 ? '#003399' : '#cc0000') : '#000000';
     doc.fillColor(couleur).font('Helvetica-Bold')
        .text(fmt(row.note), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
 
     doc.fillColor('#000000').font('Helvetica');
-    const rangText = rangSem ? `${rangSem}/${nbEtSem}` : '#REF!';
+    const rangText = rangSem ? `${rangSem}/${nbEtSem}` : 'N/A';
     doc.text(rangText, colsA.rang.x, rowY + 3, { width: colsA.rang.w, align: 'center' });
     doc.text(fmt(row.moyC), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
 
@@ -663,9 +652,8 @@ const genererBulletinAnnuel = async (etudiantId) => {
 
   rowY += 10;
 
-  // ── DÉCISION + MENTION ──
   doc.fontSize(9).font('Helvetica').fillColor('#000000')
-     .text('Décision du Conseil d\'Etablissement :', M, rowY);
+     .text("Décision du Conseil d'Etablissement :", M, rowY);
   doc.moveDown(0.3);
   doc.fontSize(9).font('Helvetica')
      .text('Mention : ', M, doc.y, { continued: true })
@@ -673,16 +661,14 @@ const genererBulletinAnnuel = async (etudiantId) => {
      .text(mention);
   doc.moveDown(0.5);
 
-  // ── SIGNATURES ──
-  doc.fontSize(8).font('Helvetica').fillColor('#000000');
   const sigY = doc.y + 10;
+  doc.fontSize(8).font('Helvetica').fillColor('#000000');
   doc.text('Le Responsable pédagogique', M + 40, sigY, { width: 180, align: 'center' });
   doc.text('Le Chef de département', M + 295, sigY, { width: 180, align: 'center' });
   doc.moveDown(2.5);
   doc.text('Signature : _______________', M + 40, doc.y, { width: 180, align: 'center' });
   doc.text('Signature : _______________', M + 295, doc.y, { width: 180, align: 'center' });
 
-  // ── PIED DE PAGE ──
   doc.moveDown(1.5);
   drawHLine(doc, M, M + colW, doc.y, '#000000', 0.5);
   doc.moveDown(0.3);
@@ -694,7 +680,7 @@ const genererBulletinAnnuel = async (etudiantId) => {
 };
 
 // ─────────────────────────────────────────────
-// VERSIONS HTML (conservées pour compatibilité)
+// VERSIONS HTML
 // ─────────────────────────────────────────────
 
 const genererBulletinHTML = async (etudiantId, semestreId) => {
@@ -714,18 +700,18 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
     const matieres = await Matiere.findAll({ where: { ueId: ue.id } });
     const moyenneUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
     const moyClasseUE = await getMoyenneClasseUE(ue.id);
-    const creditsUE = matieres.reduce((s, m) => s + m.credits, 0);
-    const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
+    const creditsUE = matieres.reduce((s, m) => s + safeNum(m.credits, 0), 0);
+    const coefUE = matieres.reduce((s, m) => s + safeNum(m.coefficient, 0), 0);
 
     let lignesMatieres = '';
     for (const matiere of matieres) {
       const moyMat = await MoyenneMatiere.findOne({ where: { etudiantId, matiereId: matiere.id } });
       const moyClasseMat = await getMoyenneClasseMatiere(matiere.id);
       const moy = moyMat?.moyenne ?? null;
-      const couleur = moy !== null ? (moy >= 10 ? '#003399' : '#cc0000') : '#333';
+      const couleur = moy !== null ? (safeNum(moy) >= 10 ? '#003399' : '#cc0000') : '#333';
       lignesMatieres += `<tr>
         <td style="text-align:left;padding-left:16px">${matiere.libelle}</td>
-        <td>${matiere.credits}</td>
+        <td>${safeNum(matiere.credits, 0)}</td>
         <td>${fmt(matiere.coefficient)}</td>
         <td style="color:${couleur};font-weight:bold">${fmt(moy)}</td>
         <td>${fmt(moyClasseMat)}</td>
@@ -733,7 +719,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
     }
 
     const moyUE = moyenneUE?.moyenne ?? null;
-    const couleurUE = moyUE !== null ? (moyUE >= 10 ? '#003399' : '#cc0000') : '#333';
+    const couleurUE = moyUE !== null ? (safeNum(moyUE) >= 10 ? '#003399' : '#cc0000') : '#333';
     lignesUE += `
       <tr class="ue-header"><td colspan="5">${ue.code} : ${ue.libelle}</td></tr>
       ${lignesMatieres}
@@ -777,8 +763,6 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
     .validation-table td { border: 1px solid #000; padding: 6px; text-align: center; font-size: 10px; }
     .decision { color: #003399; font-size: 12px; margin: 6px 0; border-top: 2px solid #003399; border-bottom: 2px solid #003399; padding: 4px 0; }
     .footer-text { font-size: 9px; font-style: italic; text-align: center; margin-top: 20px; border-top: 1px solid #000; padding-top: 6px; }
-    .signature-block { display: flex; justify-content: space-between; margin-top: 30px; font-size: 11px; }
-    .signature { text-align: center; width: 200px; }
   </style>
 </head>
 <body>
@@ -796,7 +780,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
   </div>
 
   <h2>Bulletin de notes du ${semestre.libelle}</h2>
-  <h3>Année universitaire : ${semestre.anneeUniversitaire}</h3>
+  <h3>Année universitaire : ${semestre.anneeUniversitaire || '2025-2026'}</h3>
 
   <div class="classe-box">
     Classe : Licence Professionnelle Réseaux et Télécommunications &nbsp;
@@ -834,7 +818,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
       </tr>
       <tr class="moyenne-row">
         <td colspan="3" style="text-align:right">Moyenne ${semestre.libelle}</td>
-        <td style="color:${(resultat?.moyenneSemestre ?? 0) >= 10 ? '#003399' : '#cc0000'}">${fmt(resultat?.moyenneSemestre)}</td>
+        <td style="color:${safeNum(resultat?.moyenneSemestre) >= 10 ? '#003399' : '#cc0000'}">${fmt(resultat?.moyenneSemestre)}</td>
         <td>${fmt(moyClasse)}</td>
       </tr>
     </tbody>
@@ -862,10 +846,11 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
         ${(await Promise.all(ues.map(async ue => {
           const m = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
           const mats = await Matiere.findAll({ where: { ueId: ue.id } });
-          const tot = mats.reduce((s, x) => s + x.credits, 0);
-          return `<td>${m?.creditsAcquis ?? 0} Crédits / ${tot}<br><small>${m?.compense ? 'UE Acquise par Compensation' : (m?.creditsAcquis > 0 ? 'UE Acquise' : 'UE non Acquise')}</small></td>`;
+          const tot = mats.reduce((s, x) => s + safeNum(x.credits, 0), 0);
+          const acq = safeNum(m?.creditsAcquis, 0);
+          return `<td>${acq} Crédits / ${tot}<br><small>${m?.compense ? 'UE Acquise par Compensation' : (acq > 0 ? 'UE Acquise' : 'UE non Acquise')}</small></td>`;
         }))).join('')}
-        <td>${resultat?.creditsTotal ?? 0} Crédits /30<br><small>${resultat?.valide ? 'Semestre Acquis par Compensation' : 'Semestre non Acquis'}</small></td>
+        <td>${safeNum(resultat?.creditsTotal, 0)} Crédits /30<br><small>${resultat?.valide ? 'Semestre Acquis' : 'Semestre non Acquis'}</small></td>
       </tr>
     </table>
   </div>
@@ -925,13 +910,10 @@ const genererBulletinAnnuelHTML = async (etudiantId) => {
     .notes-table th { background: #fff; border: 1px solid #000; padding: 5px; text-align: center; font-size: 11px; }
     .notes-table td { border: 1px solid #ccc; padding: 4px 6px; text-align: center; font-size: 11px; }
     .ue-header td { background: #dce6f1 !important; color: #003399; font-weight: bold; text-align: left; padding-left: 6px; border: 1px solid #000; }
-    .sem-row td { background: #ffffff; }
     .annuel-row td { background: #eaf0fb !important; font-weight: bold; border: 1px solid #000; }
     .bilan-header td { background: #dce6f1 !important; color: #003399; font-weight: bold; border: 1px solid #000; }
     .rang-annuel { background: #f0f0f0; border: 1px solid #000; padding: 5px 10px; margin-bottom: 8px; font-size: 11px; }
     .decision-box { text-align: center; border: 2px solid #003399; padding: 10px; margin: 15px 0; color: #003399; font-size: 14px; font-weight: bold; }
-    .signature-block { display: flex; justify-content: space-between; margin-top: 40px; }
-    .signature { text-align: center; font-size: 11px; }
     .footer-text { font-size: 9px; font-style: italic; text-align: center; margin-top: 20px; border-top: 1px solid #000; padding-top: 6px; }
   </style>
 </head>
@@ -950,7 +932,7 @@ const genererBulletinAnnuelHTML = async (etudiantId) => {
   </div>
 
   <h2>Bulletin de notes Annuel</h2>
-  <h3>Année universitaire : ${s5?.anneeUniversitaire || '2025-2026'}</h3>
+  <h3>Année universitaire : ${s5?.anneeUniversitaire || s6?.anneeUniversitaire || '2025-2026'}</h3>
 
   <div class="classe-box">
     Classe : Licence Professionnelle Réseaux et Télécommunications &nbsp;
@@ -969,7 +951,7 @@ const genererBulletinAnnuelHTML = async (etudiantId) => {
   </table>
 
   <div class="rang-annuel">
-    Rang de l'étudiant à l'année : <strong>${rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : '#REF!'}</strong>
+    Rang de l'étudiant à l'année : <strong>${rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : 'Non classé'}</strong>
   </div>
 
   <table class="notes-table">
@@ -984,26 +966,26 @@ const genererBulletinAnnuelHTML = async (etudiantId) => {
     </thead>
     <tbody>
       <tr class="bilan-header"><td colspan="5" style="text-align:left">Bilan annuel</td></tr>
-      <tr class="sem-row">
+      <tr>
         <td style="text-align:left;padding-left:16px">Semestre 1</td>
         <td>18</td>
-        <td style="color:${(resultatS5?.moyenneSemestre ?? 0) >= 10 ? '#003399' : '#cc0000'};font-weight:bold">${fmt(resultatS5?.moyenneSemestre)}</td>
-        <td>#REF!</td>
-        <td>#REF!</td>
+        <td style="color:${safeNum(resultatS5?.moyenneSemestre) >= 10 ? '#003399' : '#cc0000'};font-weight:bold">${fmt(resultatS5?.moyenneSemestre)}</td>
+        <td>N/A</td>
+        <td>N/A</td>
       </tr>
       <tr>
         <td style="text-align:left;padding-left:16px">Semestre 2</td>
         <td>24</td>
-        <td style="color:${(resultatS6?.moyenneSemestre ?? 0) >= 10 ? '#003399' : '#cc0000'};font-weight:bold">${fmt(resultatS6?.moyenneSemestre)}</td>
-        <td>#REF!</td>
-        <td>#REF!</td>
+        <td style="color:${safeNum(resultatS6?.moyenneSemestre) >= 10 ? '#003399' : '#cc0000'};font-weight:bold">${fmt(resultatS6?.moyenneSemestre)}</td>
+        <td>N/A</td>
+        <td>N/A</td>
       </tr>
       <tr class="annuel-row">
         <td style="text-align:left;padding-left:24px">Annuel</td>
         <td>42</td>
-        <td style="color:${(resultatAnnuel?.moyenneAnnuelle ?? 0) >= 10 ? '#003399' : '#cc0000'}">${fmt(resultatAnnuel?.moyenneAnnuelle)}</td>
-        <td>${rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : '#REF!'}</td>
-        <td>#REF!</td>
+        <td style="color:${safeNum(resultatAnnuel?.moyenneAnnuelle) >= 10 ? '#003399' : '#cc0000'}">${fmt(resultatAnnuel?.moyenneAnnuelle)}</td>
+        <td>${rangAnnuel ? `${rangAnnuel}/${nbEtudiants}` : 'N/A'}</td>
+        <td>N/A</td>
       </tr>
     </tbody>
   </table>
@@ -1013,12 +995,12 @@ const genererBulletinAnnuelHTML = async (etudiantId) => {
 
   <div class="decision-box">Décision du Jury : ${decision}</div>
 
-  <div class="signature-block">
-    <div class="signature">
+  <div style="display:flex;justify-content:space-between;margin-top:40px;font-size:11px">
+    <div style="text-align:center;width:200px">
       Le Responsable pédagogique<br><br><br>
       Signature : _______________
     </div>
-    <div class="signature">
+    <div style="text-align:center;width:200px">
       Le Chef de département<br><br><br>
       Signature : _______________
     </div>
