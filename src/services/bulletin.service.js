@@ -15,6 +15,8 @@ const fmt = (v, dec = 2) => {
 };
 
 const getRang = async (etudiantId, semestreId) => {
+  etudiantId = parseInt(etudiantId);
+  semestreId = parseInt(semestreId);
   const tous = await ResultatSemestre.findAll({ where: { semestreId } });
   const tries = tous
     .filter(r => r.moyenneSemestre !== null)
@@ -24,6 +26,7 @@ const getRang = async (etudiantId, semestreId) => {
 };
 
 const getRangAnnuel = async (etudiantId) => {
+  etudiantId = parseInt(etudiantId);
   const tous = await ResultatAnnuel.findAll();
   const tries = tous
     .filter(r => r.moyenneAnnuelle !== null)
@@ -107,6 +110,8 @@ const drawEnTete = (doc) => {
 // ─────────────────────────────────────────────
 
 const genererBulletinSemestre = async (etudiantId, semestreId) => {
+  etudiantId = parseInt(etudiantId);
+  semestreId = parseInt(semestreId);
   console.log(">>> Début génération bulletin semestre", { etudiantId, semestreId });
   const etudiant = await Etudiant.findByPk(etudiantId);
   console.log(">>> Etudiant:", etudiant?.nom, etudiant?.prenom);
@@ -407,6 +412,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
 // ─────────────────────────────────────────────
 
 const genererBulletinAnnuel = async (etudiantId) => {
+  etudiantId = parseInt(etudiantId);
   const etudiant = await Etudiant.findByPk(etudiantId);
   const semestres = await Semestre.findAll();
   const s5 = semestres.find(s => s.libelle === 'S5');
@@ -692,6 +698,8 @@ const genererBulletinAnnuel = async (etudiantId) => {
 // ─────────────────────────────────────────────
 
 const genererBulletinHTML = async (etudiantId, semestreId) => {
+  etudiantId = parseInt(etudiantId);
+  semestreId = parseInt(semestreId);
   const etudiant = await Etudiant.findByPk(etudiantId);
   const semestre = await Semestre.findByPk(semestreId);
   const ues = await UE.findAll({ where: { semestreId } });
@@ -882,6 +890,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
 };
 
 const genererBulletinAnnuelHTML = async (etudiantId) => {
+  etudiantId = parseInt(etudiantId);
   const etudiant = await Etudiant.findByPk(etudiantId);
   const semestres = await Semestre.findAll();
   const s5 = semestres.find(s => s.libelle === 'S5');
