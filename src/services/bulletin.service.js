@@ -7,7 +7,12 @@ const { Etudiant, Semestre, UE, Matiere, Evaluation, MoyenneMatiere, MoyenneUE, 
 // HELPERS
 // ─────────────────────────────────────────────
 
-const fmt = (v, dec = 2) => (v !== null && v !== undefined ? parseFloat(v).toFixed(dec) : '-');
+const fmt = (v, dec = 2) => {
+  if (v === null || v === undefined || isNaN(v)) return '-';
+  const n = parseFloat(v);
+  if (isNaN(n)) return '-';
+  return n.toFixed(dec);
+};
 
 const getRang = async (etudiantId, semestreId) => {
   const tous = await ResultatSemestre.findAll({ where: { semestreId } });
@@ -233,7 +238,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
       doc.fontSize(8).font('Helvetica').fillColor('#000000');
       doc.text(`    ${mat.libelle}`, M + 2, rowY + 3, { width: cols.credits.x - M - 4 });
       doc.text(mat.credits.toString(), cols.credits.x, rowY + 3, { width: cols.credits.w, align: 'center' });
-      doc.text(parseFloat(mat.coefficient).toFixed(2), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
+      doc.text(fmt(mat.coefficient), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
 
       // Note étudiant en bleu/rouge
       const noteColor = noteMat !== null ? (noteMat >= 10 ? '#003399' : '#cc0000') : '#000000';
@@ -255,7 +260,7 @@ const genererBulletinSemestre = async (etudiantId, semestreId) => {
     const creditsUE = matieres.reduce((s, m) => s + m.credits, 0);
     doc.text(`        Moyenne ${ue.code}`, M + 2, rowY + 3, { width: cols.credits.x - M - 2 });
     doc.text(creditsUE.toString(), cols.credits.x, rowY + 3, { width: cols.credits.w, align: 'center' });
-    const coefUE = matieres.reduce((s, m) => s + parseFloat(m.coefficient), 0);
+    const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
     doc.text(coefUE.toFixed(2), cols.coef.x, rowY + 3, { width: cols.coef.w, align: 'center' });
     const moyUE = moyenneUE?.moyenne ?? null;
     const couleurUE = moyUE !== null ? (moyUE >= 10 ? '#003399' : '#cc0000') : '#000000';
@@ -549,7 +554,7 @@ const genererBulletinAnnuel = async (etudiantId) => {
       const matieres = row.ue ? await Matiere.findAll({ where: { ueId: row.ue.id } }) : [];
       const moyUE = row.ue ? await MoyenneUE.findOne({ where: { etudiantId, ueId: row.ue.id } }) : null;
       const moyClasseUEVal = row.ue ? await getMoyenneClasseUE(row.ue.id) : null;
-      const coefUE = matieres.reduce((s, m) => s + parseFloat(m.coefficient), 0);
+      const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
 
       const rangSem = row.semestreId ? await getRang(etudiantId, row.semestreId) : null;
       const nbEtSem = row.semestreId ? (await ResultatSemestre.findAll({ where: { semestreId: row.semestreId } })).length : 0;
@@ -580,7 +585,7 @@ const genererBulletinAnnuel = async (etudiantId) => {
     const moyUES6 = group.ueS6 ? await MoyenneUE.findOne({ where: { etudiantId, ueId: group.ueS6.id } }) : null;
     const matS5 = group.ueS5 ? await Matiere.findAll({ where: { ueId: group.ueS5.id } }) : [];
     const matS6 = group.ueS6 ? await Matiere.findAll({ where: { ueId: group.ueS6.id } }) : [];
-    const coefAnnuel = matS5.reduce((s, m) => s + parseFloat(m.coefficient), 0) + matS6.reduce((s, m) => s + parseFloat(m.coefficient), 0);
+    const coefAnnuel = matS5.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0) + matS6.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
     const creditsAnnuel = matS5.reduce((s, m) => s + m.credits, 0) + matS6.reduce((s, m) => s + m.credits, 0);
 
     const moyAnnUE = (moyUES5?.moyenne != null && moyUES6?.moyenne != null)
@@ -594,8 +599,10 @@ const genererBulletinAnnuel = async (etudiantId) => {
     doc.text(coefAnnuel.toFixed(2), colsA.coef.x, rowY + 3, { width: colsA.coef.w, align: 'center' });
     doc.text(creditsAnnuel.toString(), colsA.note.x, rowY + 3, { width: colsA.note.w, align: 'center' });
 
-    const moyClasseAnnUE = (await getMoyenneClasseUE(group.ueS5?.id) + await getMoyenneClasseUE(group.ueS6?.id)) / 2;
-    doc.text(fmt(isNaN(moyClasseAnnUE) ? null : moyClasseAnnUE), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
+    const mc1 = (await getMoyenneClasseUE(group.ueS5?.id)) || 0;
+    const mc2 = (await getMoyenneClasseUE(group.ueS6?.id)) || 0;
+    const moyClasseAnnUE = (mc1 && mc2) ? (mc1 + mc2) / 2 : (mc1 || mc2 || null);
+    doc.text(fmt(moyClasseAnnUE), colsA.moyC.x, rowY + 3, { width: colsA.moyC.w, align: 'center' });
 
     Object.values(colsA).slice(1).forEach(c => drawVLine(doc, c.x, rowY, rowY + 14));
     drawVLine(doc, M + colW, rowY, rowY + 14);
@@ -695,7 +702,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
     const moyenneUE = await MoyenneUE.findOne({ where: { etudiantId, ueId: ue.id } });
     const moyClasseUE = await getMoyenneClasseUE(ue.id);
     const creditsUE = matieres.reduce((s, m) => s + m.credits, 0);
-    const coefUE = matieres.reduce((s, m) => s + parseFloat(m.coefficient), 0);
+    const coefUE = matieres.reduce((s, m) => s + (parseFloat(m.coefficient) || 0), 0);
 
     let lignesMatieres = '';
     for (const matiere of matieres) {
@@ -706,7 +713,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
       lignesMatieres += `<tr>
         <td style="text-align:left;padding-left:16px">${matiere.libelle}</td>
         <td>${matiere.credits}</td>
-        <td>${parseFloat(matiere.coefficient).toFixed(2)}</td>
+        <td>${fmt(matiere.coefficient)}</td>
         <td style="color:${couleur};font-weight:bold">${fmt(moy)}</td>
         <td>${fmt(moyClasseMat)}</td>
       </tr>`;
@@ -720,7 +727,7 @@ const genererBulletinHTML = async (etudiantId, semestreId) => {
       <tr class="ue-footer">
         <td style="text-align:right">Moyenne ${ue.code}</td>
         <td>${creditsUE}</td>
-        <td>${coefUE.toFixed(2)}</td>
+        <td>${fmt(coefUE)}</td>
         <td style="color:${couleurUE};font-weight:bold">${fmt(moyUE)}</td>
         <td>${fmt(moyClasseUE)}</td>
       </tr>`;
